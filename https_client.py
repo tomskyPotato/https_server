@@ -2,7 +2,10 @@ import ssl
 import socket
 
 def run_https_client():
-    context = ssl._create_unverified_context()
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_verify_locations(cafile="/home/coder/projects/https_server/certs/server.crt")
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_REQUIRED
 
     with socket.create_connection(("localhost", 5690)) as sock:
         with context.wrap_socket(sock, server_hostname="localhost") as ssock:
