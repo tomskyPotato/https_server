@@ -2,6 +2,7 @@ import ssl
 import socket
 import sys
 from datetime import datetime
+from http_parser.parser import HttpParser
 
 def run_https_server(cert_type):
     ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -26,41 +27,43 @@ def run_https_server(cert_type):
                     print(f"🔐 Verwendete Cipher Suite: {conn.cipher()[0]}")
                     timestamp = datetime.now().isoformat(sep=' ', timespec='seconds')
                     print(f"🔗 Verbindung erfoglreich aufgebaut um {timestamp}")
+                    
+                    conn.settimeout(10) # Setzt einen Timeout von 10 Sekunden
 
                     # Empfangen und Ausgeben des Header und Payload
-                    request = conn.recv(1000)
-                    header_data = request.decode(errors="ignore")
-                    print("📥 Header:\n", header_data)
+                    request_as_bytes = conn.recv(10000)
+                    request_as_string = request_as_bytes.decode(errors="ignore")
 
-                    # Content-Length extrahieren
-                    content_length = 0
-                    for line in header_data.split("\r\n"):
-                        if line.lower().startswith("content-length:"):
-                            content_length = int(line.split(":")[1].strip())
-                            break
+                    parser = HttpParser()
+                    data = b"POST /test HTTP/1.1\r\nContent-Length: 13\r\n\r\nHello, World!"
 
-                    # Body separat einlesen, falls vorhanden
-                    body = b""
-                    while len(body) < content_length:
-                        body += conn.recv(content_length - len(body))
+                    # Die Feed-Methode gibt zurück, wie viele Bytes verbraucht wurden
+                    nparsed = parser.execute(request_as_bytes, len(request_as_bytes))
 
-                    print("📦 Payload:\n", body.decode(errors="ignore"))
+                    if parser.is_headers_complete():
+                        print("📥 Header:\n", parser.get_headers())
+                        if parser.is_message_complete():
+                            body_as_string = parser.recv_body().decode(errors="ignore")
+                            print("📦 Payload:\n", body_as_string)
+
+                    response = "HTTPS-Server: " + request_as_string + body_as_string
 
                     # Echo: Alles zurücksenden (Header + Body)
-                    conn.sendall(request + body)
+                    conn.sendall(response.encode('utf-8'))
 
                     timestamp = datetime.now().isoformat(sep=' ', timespec='seconds')
                     print(f"✅ Daten erfolgreich zurückgesendet um {timestamp}")
                     conn.close()
+
                 except ssl.SSLError as e:
                     print(f"❌ SSL-Fehler bei Verbindung: {e}")
                 except Exception as e:
                     print(f"❌ Allgemeiner Fehler: {e}")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Aufruf: python https_server.py <cert_type>")
-        sys.exit(1)
+    #if len(sys.argv) < 2:
+    #    print("Aufruf: python https_server.py <cert_type>")
+    #    sys.exit(1)
 
-    cert_type = sys.argv[1]
-    run_https_server(cert_type)
+    #cert_type = sys.argv[1]
+    run_https_server("ecdsa")
