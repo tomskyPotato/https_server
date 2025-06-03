@@ -4,11 +4,15 @@ import sys
 from datetime import datetime
 from http_parser.parser import HttpParser
 
+LOG_PATH = "/home/coder/projects/https_server/https_log.csv"
+
+def log_transfer(timestamp, received_size, sent_size):
+    with open(LOG_PATH, "a") as logfile:
+        logfile.write(f"{timestamp},{received_size},{sent_size}\n")
+
 def run_https_server(cert_type):
     ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    #ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-    #ssl_ctx.maximum_version = ssl.TLSVersion.TLSv1_2
-    ssl_ctx.set_ciphers("ALL:@SECLEVEL=0")  # ⚠️ unsicher, nur zu Debugzwecken! Um mit BC66 TLS kommunizieren zu können.
+    ssl_ctx.set_ciphers("ALL:@SECLEVEL=0")  # Nur für Debug!
     cert_path = f"/home/coder/projects/https_server/public/server_public_{cert_type}_weptech_iot_de.crt"
     key_path = f"/home/coder/projects/https_server/private/server_private_{cert_type}_weptech_iot_de.key"
     ssl_ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
@@ -26,19 +30,16 @@ def run_https_server(cert_type):
                     print(f"\n🔗 Verbindung von {addr}")
                     print(f"🔐 Verwendete Cipher Suite: {conn.cipher()[0]}")
                     timestamp = datetime.now().isoformat(sep=' ', timespec='seconds')
-                    print(f"🔗 Verbindung erfoglreich aufgebaut um {timestamp}")
-                    
-                    conn.settimeout(10) # Setzt einen Timeout von 10 Sekunden
+                    print(f"🔗 Verbindung erfolgreich aufgebaut um {timestamp}")
 
-                    # Empfangen und Ausgeben des Header und Payload
+                    conn.settimeout(10)
+
                     request_as_bytes = conn.recv(10000)
+                    received_size = len(request_as_bytes)
                     request_as_string = request_as_bytes.decode(errors="ignore")
 
                     parser = HttpParser()
-                    data = b"POST /test HTTP/1.1\r\nContent-Length: 13\r\n\r\nHello, World!"
-
-                    # Die Feed-Methode gibt zurück, wie viele Bytes verbraucht wurden
-                    nparsed = parser.execute(request_as_bytes, len(request_as_bytes))
+                    parser.execute(request_as_bytes, received_size)
 
                     if parser.is_headers_complete():
                         print("📥 Header:\n", parser.get_headers())
@@ -46,14 +47,15 @@ def run_https_server(cert_type):
                             body_as_string = parser.recv_body().decode(errors="ignore")
                             print("📦 Payload:\n", body_as_string)
 
-                    response = "HTTPS-Server: " + request_as_string + body_as_string
-
-                    # Echo: Alles zurücksenden (Header + Body)
+                    response = "HTTPS-Server: " + request_as_string
                     conn.sendall(response.encode('utf-8'))
+                    sent_size = len(response.encode('utf-8'))
 
                     timestamp = datetime.now().isoformat(sep=' ', timespec='seconds')
                     print(f"✅ Daten erfolgreich zurückgesendet um {timestamp}")
+
                     conn.close()
+                    log_transfer(timestamp, received_size, sent_size)
 
                 except ssl.SSLError as e:
                     print(f"❌ SSL-Fehler bei Verbindung: {e}")
@@ -61,9 +63,4 @@ def run_https_server(cert_type):
                     print(f"❌ Allgemeiner Fehler: {e}")
 
 if __name__ == "__main__":
-    #if len(sys.argv) < 2:
-    #    print("Aufruf: python https_server.py <cert_type>")
-    #    sys.exit(1)
-
-    #cert_type = sys.argv[1]
     run_https_server("ecdsa")
