@@ -1,3 +1,7 @@
+# sudo apt install lsof
+# lsof -i :5690
+# sudo kill -9 xxxxxx
+
 import ssl
 import socket
 import sys
