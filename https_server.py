@@ -2,13 +2,62 @@ import ssl
 import socket
 import sys
 from datetime import datetime
-from http_parser.parser import HttpParser
 
 LOG_PATH = "/home/coder/projects/https_server/https_log.csv"
 
 def log_transfer(timestamp, received_size, sent_size):
     with open(LOG_PATH, "a") as logfile:
         logfile.write(f"{timestamp},{received_size},{sent_size}\n")
+
+def parse_http_request(request_bytes):
+    """
+    Parst eine einfache HTTP-Anfrage (rudimentär).
+    Gibt Methode, Pfad, Header und Body zurück.
+    """
+    request_str = request_bytes.decode('utf-8', errors='ignore')
+    lines = request_str.split('\r\n')
+
+    method = None
+    path = None
+    http_version = None
+    headers = {}
+    body = ""
+    
+    if not lines:
+        return method, path, http_version, headers, body
+
+    # Parse Request-Line (e.g., GET /index.html HTTP/1.1)
+    request_line_parts = lines[0].split(' ')
+    if len(request_line_parts) >= 3:
+        method = request_line_parts[0]
+        path = request_line_parts[1]
+        http_version = request_line_parts[2]
+    elif len(request_line_parts) == 2: # Sometimes HTTP/1.0 requests omit version
+        method = request_line_parts[0]
+        path = request_line_parts[1]
+        http_version = "HTTP/1.0" # Assume HTTP/1.0 if not specified
+    elif len(request_line_parts) == 1: # Only method
+        method = request_line_parts[0]
+        path = "/"
+        http_version = "HTTP/1.0"
+
+    # Parse Headers and Body
+    header_end_index = -1
+    for i, line in enumerate(lines[1:]):
+        if not line: # Empty line signifies end of headers
+            header_end_index = i + 1 # +1 because we started from lines[1:]
+            break
+        parts = line.split(':', 1)
+        if len(parts) == 2:
+            key = parts[0].strip()
+            value = parts[1].strip()
+            headers[key] = value
+
+    if header_end_index != -1:
+        body = '\r\n'.join(lines[header_end_index + 1:])
+
+    return method, path, http_version, headers, body
+
 
 def run_https_server(cert_type):
     ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -36,31 +85,59 @@ def run_https_server(cert_type):
 
                     request_as_bytes = conn.recv(10000)
                     received_size = len(request_as_bytes)
-                    request_as_string = request_as_bytes.decode(errors="ignore")
+                    
+                    method, path, http_version, headers, body = parse_http_request(request_as_bytes)
 
-                    parser = HttpParser()
-                    parser.execute(request_as_bytes, received_size)
+                    if method:
+                        print(f"📥 Methode: {method}")
+                        print(f"🌍 Pfad: {path}")
+                        print(f"📜 HTTP-Version: {http_version}")
+                        print("📥 Header:")
+                        for key, value in headers.items():
+                            print(f"    {key}: {value}")
+                        if body:
+                            print("📦 Payload:\n", body)
+                    else:
+                        print("⚠ Ungültige oder leere HTTP-Anfrage empfangen.")
 
-                    if parser.is_headers_complete():
-                        print("📥 Header:\n", parser.get_headers())
-                        if parser.is_message_complete():
-                            body_as_string = parser.recv_body().decode(errors="ignore")
-                            print("📦 Payload:\n", body_as_string)
+                    # Manuelle Konstruktion der HTTP-Antwort
+                    status_line = "HTTP/1.1 200 OK\r\n"
+                    headers = {
+                        "Content-Type": "text/plain; charset=utf-8",
+                        "Connection": "close", # Keep-alive ist komplexer ohne Parser
+                        "Date": datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
+                    }
+                    
+                    response_body_content = f"Hallo von deinem HTTPS-Server!\n\nEmpfangene Anfrage:\n{request_as_bytes.decode('utf-8', errors='ignore')}"
+                    headers["Content-Length"] = str(len(response_body_content.encode('utf-8')))
 
-                    response = "HTTPS-Server: " + request_as_string
-                    conn.sendall(response.encode('utf-8'))
-                    sent_size = len(response.encode('utf-8'))
+                    response_headers = "".join([f"{k}: {v}\r\n" for k, v in headers.items()])
+                    
+                    full_response = (status_line + 
+                                     response_headers + 
+                                     "\r\n" + # Leere Zeile zwischen Headern und Body
+                                     response_body_content).encode('utf-8')
+                    
+                    conn.sendall(full_response)
+                    sent_size = len(full_response)
 
                     timestamp = datetime.now().isoformat(sep=' ', timespec='seconds')
                     print(f"✅ Daten erfolgreich zurückgesendet um {timestamp}")
 
                     conn.close()
-                    log_transfer(timestamp, received_size, sent_size)
+                    log_transfer(timestamp, received_size, sent_size) # log_transfer ist jetzt aktiv
 
                 except ssl.SSLError as e:
                     print(f"❌ SSL-Fehler bei Verbindung: {e}")
+                except socket.timeout:
+                    print("⌛ Verbindung aufgrund von Inaktivität geschlossen (Timeout).")
                 except Exception as e:
                     print(f"❌ Allgemeiner Fehler: {e}")
+                    # Hier könnte man detailliertere Fehlerbehandlung hinzufügen
+                    try:
+                        conn.close()
+                    except:
+                        pass # Verbindung war vielleicht schon geschlossen
 
 if __name__ == "__main__":
     run_https_server("ecdsa")
