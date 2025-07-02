@@ -16,9 +16,10 @@ def log_transfer(timestamp, received_size, sent_size):
 
 def run_https_server(cert_type):
     ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_ctx.set_ciphers("ALL:@SECLEVEL=0")  # Nur für Debug!
-    cert_path = f"/home/coder/projects/https_server/public/server_public_{cert_type}_weptech_iot_de.crt"
-    key_path = f"/home/coder/projects/https_server/private/server_private_{cert_type}_weptech_iot_de.key"
+    ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ssl_ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+    cert_path = f"/home/coder/projects/https_server/public/ca_public_{cert_type}_weptech_iot_de.crt"
+    key_path = f"/home/coder/projects/https_server/private/ca_private_{cert_type}_weptech_iot_de.key"
     ssl_ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
@@ -67,4 +68,5 @@ def run_https_server(cert_type):
                     print(f"❌ Allgemeiner Fehler: {e}")
 
 if __name__ == "__main__":
+    #run_https_server("rsa")
     run_https_server("ecdsa")

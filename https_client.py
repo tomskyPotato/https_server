@@ -3,7 +3,7 @@ import socket
 
 def run_https_client():
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.load_verify_locations(cafile="/home/coder/projects/https_server/certs/server.crt")
+    context.load_verify_locations(cafile="public/ca_public_rsa_weptech_iot_de.crt")
     context.check_hostname = False
     context.verify_mode = ssl.CERT_REQUIRED
 
